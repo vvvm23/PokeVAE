@@ -80,6 +80,7 @@ class Quantizer(nn.Module):
         self.emd_dim = emd_dim # Input dimension
         self.nb_emd = nb_emd # Number of latent embedding vectors
         self.decay = 0.99
+ 
         self.eps = 1e-5
         
         embed = torch.randn(emd_dim, nb_emd) # Embedding tensor containing nb_emd latent embedding vectors
@@ -206,7 +207,7 @@ class VQVAE(nn.Module):
         up_t = self.upsample(qt)
         q = torch.cat([up_t, qb], 1)
         dec = self.decoder(q)
-        dec = F.avg_pool2d(dec, 4, stride=1)
+        # dec = F.avg_pool2d(dec, 4, stride=1)
         return dec
 
     def decode_code(self, ct, cb):
