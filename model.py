@@ -29,36 +29,37 @@ class ResidualStack(nn.Module):
     def forward(self, x):
         return self.stack(x)
 
+class UnevenPad(nn.Module):
+    def __init__(self):
+        super(UnevenPad, self).__init__()
+
+    def forward(self, x):
+        return F.pad(x, (1,2,1,2))
+
 # Encoder Module
 # Just a few Conv layers followed by a residual stack
 class Encoder(nn.Module):
-    def __init__(self, i_dim, h_dim, nb_r_layers, r_dim, stride, dropout=0.1):
+    def __init__(self, i_dim, h_dim, nb_r_layers, r_dim, enc_type, dropout=0.1):
         super(Encoder, self).__init__()
-        if stride == 4:
+
+        if enc_type == 'half':
             blocks = [
-                nn.Conv2d(i_dim, h_dim // 2, 4, stride=2, padding=1),
-                nn.BatchNorm2d(h_dim // 2),
-                nn.ReLU(inplace=True), # Usually I prefer using F.relu, but this "blocks" syntax is quite elegant
-                nn.Dropout(dropout),
-                nn.Conv2d(h_dim // 2, h_dim, 4, stride=2, padding=1),
+                nn.Conv2d(i_dim, h_dim, 3, stride=2, padding=1),
                 nn.BatchNorm2d(h_dim),
-                nn.ReLU(inplace=True),
-                nn.Dropout(dropout),
-                nn.Conv2d(h_dim, h_dim, 3, padding=1),
-                nn.BatchNorm2d(h_dim),
-                nn.ReLU(inplace=True),
-                nn.Dropout(dropout),
+                nn.Dropout(dropout)
             ]
-        elif stride == 2:
+        elif enc_type == 'quarter':
             blocks = [
-                nn.Conv2d(i_dim, h_dim // 2, 4, stride=2, padding=1),
-                nn.BatchNorm2d(h_dim // 2),
+                UnevenPad(),
+                nn.Conv2d(i_dim, h_dim, 4, stride=2),
+                nn.BatchNorm2d(h_dim),
                 nn.ReLU(inplace=True),
                 nn.Dropout(dropout),
-                nn.Conv2d(h_dim // 2, h_dim, 3, padding=1),
+
+                UnevenPad(),
+                nn.Conv2d(h_dim, h_dim, 4, stride=2),
                 nn.BatchNorm2d(h_dim),
-                nn.ReLU(dropout),
-                nn.Dropout(dropout),
+                nn.Dropout(dropout)
             ]
         else:
             raise NotImplementedError
@@ -130,30 +131,23 @@ class Quantizer(nn.Module):
 # Decoder module
 # simply conv layer, residual stack and some upsampling layers
 class Decoder(nn.Module):
-    def __init__(self, i_dim, h_dim, o_dim, nb_r_layers, r_dim, stride, dropout=0.1):
+    def __init__(self, i_dim, h_dim, o_dim, nb_r_layers, r_dim, dec_type, dropout=0.1):
         super(Decoder, self).__init__()
-        blocks = [
-            # nn.Conv2d(i_dim, h_dim, 3, padding=1),
-            nn.ConvTranspose2d(i_dim, h_dim, 3, padding=1),
-            nn.BatchNorm2d(h_dim),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-        ]
-        blocks.append(ResidualStack(h_dim, r_dim, h_dim, nb_r_layers))
+        blocks = []
+        blocks.append(ResidualStack(i_dim, r_dim, i_dim, nb_r_layers))
         blocks.append(nn.ReLU(inplace=True))
 
-        if stride == 4:
-            blocks.extend(
-                [
-                    nn.ConvTranspose2d(h_dim, h_dim // 2, 4, stride=2, padding=1, output_padding=1),
-                    nn.BatchNorm2d(h_dim // 2),
-                    nn.ReLU(inplace=True),
-                    nn.Dropout(dropout),
-                    nn.ConvTranspose2d(h_dim // 2, o_dim, 4, stride=2, padding=1, output_padding=1),
-                ]
-            )
-        elif stride == 2:
-            blocks.append(nn.ConvTranspose2d(h_dim, o_dim, 4, stride=2, padding=1, output_padding=1))
+        if dec_type == 'half':
+            blocks.append(nn.ConvTranspose2d(i_dim, o_dim, 4, stride=2, padding=1))
+            blocks.append(nn.BatchNorm2d(o_dim))
+        if dec_type == 'quarter':
+            blocks.append(nn.ConvTranspose2d(i_dim, h_dim, 4, stride=2, padding=1))
+            blocks.append(nn.BatchNorm2d(h_dim))
+            blocks.append(nn.ReLU(inplace=True))
+            blocks.append(nn.Dropout(dropout))
+
+            blocks.append(nn.ConvTranspose2d(h_dim, o_dim, 4, stride=2, padding=1))
+            blocks.append(nn.BatchNorm2d(o_dim))
         else:
             raise NotImplementedError
 
