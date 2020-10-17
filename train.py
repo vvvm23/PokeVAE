@@ -1,5 +1,5 @@
 import torch
-import torch.nn
+import torch.nn as nn
 import torch.nn.functional as F
 
 import torchvision
@@ -10,22 +10,27 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
-BATCH_SIZE = 128
+def init_weights(m):
+    if type(m) in [nn.Linear, nn.Conv2d]:
+        torch.nn.init.kaiming_normal_(m.weight)
+        m.bias.data.fill_(0.01)
+
+BATCH_SIZE = 256
 NB_EPOCHS = 200
 TRY_CUDA = True
 
 device = torch.device('cuda:0' if TRY_CUDA and torch.cuda.is_available() else 'cpu')
 print(f"> Device: {device} ({'CUDA is enabled' if TRY_CUDA and torch.cuda.is_available() else 'CUDA not available'}) \n")
 
-model = VQVAE(3, 16, 4, 2, 64, 3).to(device)
+model = VQVAE(3, 32, 16, 2, 32, 1).to(device)
+model.apply(init_weights)
 crit = torch.nn.MSELoss()
-optim = torch.optim.Adam(model.parameters(), lr=0.001)
+optim = torch.optim.Adam(model.parameters(), lr=0.003)
 
 dataset = torchvision.datasets.ImageFolder('data/pokegan/',
     transform=torchvision.transforms.Compose([
-        torchvision.transforms.Resize(128),
+        torchvision.transforms.Resize(64),
         torchvision.transforms.RandomHorizontalFlip(),
-        # torchvision.transforms.RandomRotation(5),
         torchvision.transforms.ToTensor()
         ])
     )
@@ -92,13 +97,13 @@ for i, (x, _) in enumerate(test_loader):
     y = model.decode(qt, qb)
 
     x = x.permute(0, 2, 3, 1).squeeze().detach().cpu().numpy()
-    qt = qt[0, :, :, :].reshape(16, 16, 3).detach().cpu().numpy()
-    qb = qb[0, :, :, :].reshape(32, 32, 3).detach().cpu().numpy()
+    qt = qt[0, :, :, :].reshape(4, 4).detach().cpu().numpy()
+    qb = qb[0, :, :, :].reshape(16, 16).detach().cpu().numpy()
     y = y.permute(0, 2, 3, 1).squeeze().detach().cpu().numpy()
 
     axs[i // 2, 0 + (i % 2)*4].imshow(x, interpolation='none')
-    axs[i // 2, 1 + (i % 2)*4].imshow(qt, interpolation='none')
-    axs[i // 2, 2 + (i % 2)*4].imshow(qb, interpolation='none')
+    axs[i // 2, 1 + (i % 2)*4].imshow(qt, interpolation='none', cmap='gray')
+    axs[i // 2, 2 + (i % 2)*4].imshow(qb, interpolation='none', cmap='gray')
     axs[i // 2, 3 + (i % 2)*4].imshow(y, interpolation='none')
 
 [[x.axis(False) for x in y] for y in axs]

@@ -162,11 +162,11 @@ class VQVAE(nn.Module):
         super(VQVAE, self).__init__()
 
         self.enc_b = Encoder(i_dim, h_dim, nb_r_layers, r_dim, 'quarter') # bottom level encoder
-        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, 'half') # top level encoder
+        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, 'quarter') # top level encoder
 
         self.quan_ct = nn.Conv2d(h_dim, emd_dim, 1) # resize top encoder output to embedding dim
         self.quan_t = Quantizer(emd_dim, nb_emd) # top level vector quantizer
-        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, 'half') # top level decoder
+        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, 'quarter') # top level decoder
 
         self.quan_cb = nn.Conv2d(emd_dim + h_dim, emd_dim, 1) # resize bottom encoder output to embedding dim
         self.quan_b = Quantizer(emd_dim, nb_emd) # bottom level vector quantizer
@@ -175,7 +175,7 @@ class VQVAE(nn.Module):
 
         self.upsample = nn.Sequential(
             nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1), 
-            # nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1)
+            nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1)
         )
 
         self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, 'quarter') # final, bottom level decoder that produces final reconstruction
