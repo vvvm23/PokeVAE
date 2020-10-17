@@ -172,10 +172,17 @@ class VQVAE(nn.Module):
         self.quan_b = Quantizer(emd_dim, nb_emd) # bottom level vector quantizer
 
         self.upsample = nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1) # upsample to embedding dimension
+
+        self.upsample = nn.Sequential(
+            nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1), 
+            # nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1)
+        )
+
         self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, 'quarter') # final, bottom level decoder that produces final reconstruction
 
     def forward(self, x):
         qt, qb, diff, _, _ = self.encode(x)
+        # print(qt.shape, qb.shape)
         dec = self.decode(qt, qb)
         return dec, diff
 

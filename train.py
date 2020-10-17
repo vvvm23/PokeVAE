@@ -10,14 +10,14 @@ import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
-BATCH_SIZE = 64
-NB_EPOCHS = 100
+BATCH_SIZE = 128
+NB_EPOCHS = 200
 TRY_CUDA = True
 
 device = torch.device('cuda:0' if TRY_CUDA and torch.cuda.is_available() else 'cpu')
 print(f"> Device: {device} ({'CUDA is enabled' if TRY_CUDA and torch.cuda.is_available() else 'CUDA not available'}) \n")
 
-model = VQVAE(3, 16, 4, 2, 32, 8).to(device)
+model = VQVAE(3, 16, 4, 2, 64, 3).to(device)
 crit = torch.nn.MSELoss()
 optim = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -81,7 +81,7 @@ for ei in range(NB_EPOCHS):
 model.eval()
 test_loader = torch.utils.data.DataLoader(dataset, batch_size=1, sampler=test_sampler)
 
-fig, axs = plt.subplots(8, 6)
+fig, axs = plt.subplots(8, 8)
 for i, (x, _) in enumerate(test_loader):
     if i == 16:
         break
@@ -90,16 +90,16 @@ for i, (x, _) in enumerate(test_loader):
     qt, qb, _, _, _ = model.encode(x)
 
     y = model.decode(qt, qb)
-    print(y)
 
     x = x.permute(0, 2, 3, 1).squeeze().detach().cpu().numpy()
-    # qt = qt[0, ql, :, :].reshape(16, 16).detach().cpu().numpy()
+    qt = qt[0, :, :, :].reshape(16, 16, 3).detach().cpu().numpy()
+    qb = qb[0, :, :, :].reshape(32, 32, 3).detach().cpu().numpy()
     y = y.permute(0, 2, 3, 1).squeeze().detach().cpu().numpy()
 
-    axs[i // 2, 0 + (i % 2)*3].imshow(x, interpolation='none')
-    # axs[i // 2, 1 + (i % 2)*3].imshow(qt, interpolation='none', cmap='hot')
-    # axs[i // 2, 1 + (i % 2)*3].imshow(qt, interpolation='none', cmap='hot')
-    axs[i // 2, 2 + (i % 2)*3].imshow(y, interpolation='none')
+    axs[i // 2, 0 + (i % 2)*4].imshow(x, interpolation='none')
+    axs[i // 2, 1 + (i % 2)*4].imshow(qt, interpolation='none')
+    axs[i // 2, 2 + (i % 2)*4].imshow(qb, interpolation='none')
+    axs[i // 2, 3 + (i % 2)*4].imshow(y, interpolation='none')
 
 [[x.axis(False) for x in y] for y in axs]
 # plt.savefig('fig.png', dpi=2000)
