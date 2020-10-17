@@ -140,7 +140,7 @@ class Decoder(nn.Module):
         if dec_type == 'half':
             blocks.append(nn.ConvTranspose2d(i_dim, o_dim, 4, stride=2, padding=1))
             blocks.append(nn.BatchNorm2d(o_dim))
-        if dec_type == 'quarter':
+        elif dec_type == 'quarter':
             blocks.append(nn.ConvTranspose2d(i_dim, h_dim, 4, stride=2, padding=1))
             blocks.append(nn.BatchNorm2d(h_dim))
             blocks.append(nn.ReLU(inplace=True))
@@ -160,18 +160,18 @@ class VQVAE(nn.Module):
     def __init__(self, i_dim, h_dim, r_dim, nb_r_layers, nb_emd, emd_dim):
         super(VQVAE, self).__init__()
 
-        self.enc_b = Encoder(i_dim, h_dim, nb_r_layers, r_dim, stride=4) # bottom level encoder
-        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, stride=2) # top level encoder
+        self.enc_b = Encoder(i_dim, h_dim, nb_r_layers, r_dim, 'quarter') # bottom level encoder
+        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, 'half') # top level encoder
 
         self.quan_ct = nn.Conv2d(h_dim, emd_dim, 1) # resize top encoder output to embedding dim
         self.quan_t = Quantizer(emd_dim, nb_emd) # top level vector quantizer
-        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, stride=2) # top level decoder
+        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, 'half') # top level decoder
 
         self.quan_cb = nn.Conv2d(emd_dim + h_dim, emd_dim, 1) # resize bottom encoder output to embedding dim
         self.quan_b = Quantizer(emd_dim, nb_emd) # bottom level vector quantizer
 
-        self.upsample = nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1, output_padding=1) # upsample to embedding dimension
-        self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, stride=4) # final, bottom level decoder that produces final reconstruction
+        self.upsample = nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1) # upsample to embedding dimension
+        self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, 'quarter') # final, bottom level decoder that produces final reconstruction
 
     def forward(self, x):
         qt, qb, diff, _, _ = self.encode(x)
@@ -223,3 +223,5 @@ class VQVAE(nn.Module):
 if __name__ == '__main__':
     model = VQVAE(3, 8, 2, 2, 8, 4)
     print(model)
+    x = torch.randn(1, 3, 16, 16)
+    print(model(x))
