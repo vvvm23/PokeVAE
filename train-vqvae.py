@@ -98,8 +98,8 @@ for ei in range(NB_EPOCHS):
                 img = id_b.unsqueeze(1) / (NB_EMBED - 1.0)
                 torchvision.utils.save_image(img, f'imgs/vqvae-bottom-{ei}.png', normalize=True, range=(-1,1))
 
-            if MODEL_SAVING > 0 and ei % MODEL_SAVING == 0:
-                torch.save(model.state_dict(), f"checkpoints/vqvae-{ei}.pt")
+    if MODEL_SAVING > 0 and ei % MODEL_SAVING == 0:
+        torch.save(model.state_dict(), f"checkpoints/vqvae-{ei}.pt")
 
     print(f"Training Loss: {training_loss / len(train_loader)} [r_loss: {tr_loss / len(train_loader)}, l_loss: {tl_loss / len(train_loader)}]")
     print(f"Evaluation Loss: {test_loss / len(test_loader)} [r_loss: {er_loss / len(test_loader)}, l_loss: {el_loss / len(test_loader)}]\n")

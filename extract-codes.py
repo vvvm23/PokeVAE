@@ -29,7 +29,6 @@ dataset = torchvision.datasets.ImageFolder('data/pokegan/',
     )
 
 loader = torch.utils.data.DataLoader(dataset, BATCH_SIZE)
-
 latent_dataset = (torch.zeros(len(dataset), 32, 32, dtype=torch.int16), torch.zeros(len(dataset), 64, 64, dtype=torch.int16))
 
 with torch.no_grad():

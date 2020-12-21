@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from functools import partial, lru_cache
+import math
+
 # Inherits directly from nn.Conv2d and immediately normalises weights
 # TODO: May be worth trying kaiming normal or something
 class WNConv2d(nn.Conv2d):
