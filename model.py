@@ -18,12 +18,37 @@ class ResidualLayer(nn.Module):
         z = self.drop2(self.norm2(self.conv2(F.relu(z))))
         return x + z
 
+class ReZeroLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+        self.shortcut = nn.Sequential()
+        if stride != 1:
+            self.shortcut = LambdaLayer(lambda x: F.pad(x[:, :, ::2, ::2], (0, 0, 0, 0, out_channels//4, out_channels//4), "constant", 0))
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ELU(inplace=True)
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ELU(inplace=True)
+        )
+        self.alpha = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, x):
+        out = self.conv2(self.conv1(x)) * self.alpha + self.shortcut(x)
+        return out
+
 # nb_layers of ResidualLayer in one unit
 class ResidualStack(nn.Module):
-    def __init__(self, i_dim, r_dim, h_dim, nb_layers):
+    def __init__(self, i_dim, r_dim, h_dim, nb_layers, rezero=True):
         super(ResidualStack, self).__init__()
 
-        stack = [ResidualLayer(i_dim, r_dim, h_dim)]*nb_layers
+        if rezero:
+            stack = [ReZeroLayer(i_dim, h_dim) for _ in range(nb_layers)]
+        else:
+            stack = [ResidualLayer(i_dim, r_dim, h_dim) for _ in range(nb_layers)]
         self.stack = nn.Sequential(*stack)
 
     def forward(self, x):
@@ -50,7 +75,7 @@ class Encoder(nn.Module):
             ]
         elif enc_type == 'quarter':
             blocks = [
-                UnevenPad(),
+                UnevenPad(), # TODO: replace with a simple function
                 nn.Conv2d(i_dim, h_dim, 4, stride=2),
                 nn.BatchNorm2d(h_dim),
                 nn.ReLU(inplace=True),
@@ -106,14 +131,13 @@ class Quantizer(nn.Module):
         # given the minimum embedding idea, retrieve the embedding vector
         q = self.embed_code(emd_id)
 
-        # if we are training, perform some additional steps
-        # TODO: Explain this a bit better. Not sure I fully understand what is going on in this block
+        # if we are training, update training metrics
         if self.training:
             emd_oneshot_sum = emd_oneshot.sum(0)
             emd_sum = flatten.transpose(0, 1) @ emd_oneshot
 
             self.cluster_size.data.mul_(self.decay).add_(emd_oneshot_sum, alpha=1 - self.decay)
-            self.emd_avg.data.mul_(self.decay).add_(emd_sum, alpha=1 - self.decay)
+            self.emd_avg.data.mul_(self.decay).add_(emd_sum, alpha=1-self.decay)
             n = self.cluster_size.sum()
             cluster_size = (self.cluster_size + self.eps) / (n + self.nb_emd * self.eps) * n
             emd_norm = self.emd_avg / cluster_size.unsqueeze(0)
@@ -144,7 +168,7 @@ class Decoder(nn.Module):
         elif dec_type == 'quarter':
             blocks.append(nn.ConvTranspose2d(i_dim, h_dim, 4, stride=2, padding=1))
             blocks.append(nn.BatchNorm2d(h_dim))
-            blocks.append(nn.ReLU(inplace=True))
+            # blocks.append(nn.ReLU(inplace=True))
             blocks.append(nn.Dropout(dropout))
 
             blocks.append(nn.ConvTranspose2d(h_dim, o_dim, 4, stride=2, padding=1))
@@ -158,15 +182,15 @@ class Decoder(nn.Module):
         return self.blocks(x)
 
 class VQVAE(nn.Module):
-    def __init__(self, i_dim, h_dim, r_dim, nb_r_layers, nb_emd, emd_dim):
+    def __init__(self, i_dim, h_dim, r_dim, nb_r_layers, nb_emd, emd_dim, dropout=0.1):
         super(VQVAE, self).__init__()
 
-        self.enc_b = Encoder(i_dim, h_dim, nb_r_layers, r_dim, 'quarter') # bottom level encoder
-        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, 'quarter') # top level encoder
+        self.enc_b = Encoder(i_dim, h_dim, nb_r_layers, r_dim, 'quarter', dropout=dropout) # bottom level encoder
+        self.enc_t = Encoder(h_dim, h_dim, nb_r_layers, r_dim, 'half', dropout=dropout) # top level encoder
 
         self.quan_ct = nn.Conv2d(h_dim, emd_dim, 1) # resize top encoder output to embedding dim
         self.quan_t = Quantizer(emd_dim, nb_emd) # top level vector quantizer
-        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, 'quarter') # top level decoder
+        self.dec_t = Decoder(emd_dim, h_dim, emd_dim, nb_r_layers, r_dim, 'half', dropout=dropout) # top level decoder
 
         self.quan_cb = nn.Conv2d(emd_dim + h_dim, emd_dim, 1) # resize bottom encoder output to embedding dim
         self.quan_b = Quantizer(emd_dim, nb_emd) # bottom level vector quantizer
@@ -175,14 +199,15 @@ class VQVAE(nn.Module):
 
         self.upsample = nn.Sequential(
             nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1), 
-            nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1)
+            nn.BatchNorm2d(emd_dim),
+            # nn.ReLU(inplace=True),
+            # nn.ConvTranspose2d(emd_dim, emd_dim, 4, stride=2, padding=1)
         )
 
-        self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, 'quarter') # final, bottom level decoder that produces final reconstruction
+        self.decoder = Decoder(emd_dim*2, h_dim, i_dim, nb_r_layers, r_dim, 'quarter', dropout=dropout) # final, bottom level decoder that produces final reconstruction
 
     def forward(self, x):
         qt, qb, diff, _, _ = self.encode(x)
-        # print(qt.shape, qb.shape)
         dec = self.decode(qt, qb)
         return dec, diff
 
@@ -214,7 +239,6 @@ class VQVAE(nn.Module):
         up_t = self.upsample(qt)
         q = torch.cat([up_t, qb], 1)
         dec = self.decoder(q)
-        # dec = F.avg_pool2d(dec, 4, stride=1)
         return dec
 
     def decode_code(self, ct, cb):
@@ -225,11 +249,15 @@ class VQVAE(nn.Module):
         qb = qb.permute(0, 3, 1, 2)
 
         dec = self.decode(qt, qb)
-        dec = F.max_pool2d(dec, 3, stride=3)
+        # dec = F.max_pool2d(dec, 3, stride=3)
         return dec
 
-if __name__ == '__main__':
-    model = VQVAE(3, 8, 2, 2, 8, 4)
-    print(model)
-    x = torch.randn(1, 3, 16, 16)
-    print(model(x))
+    def dequantize(self, ct, cb):
+        qt = self.quan_t.embed_code(ct)
+        qt = qt.permute(0, 3, 1, 2)
+
+        qb = self.quan_b.embed_code(cb)
+        qb = qb.permute(0, 3, 1, 2)
+
+        return qt, qb
+
