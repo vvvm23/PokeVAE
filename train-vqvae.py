@@ -4,21 +4,17 @@ import torch.nn.functional as F
 
 import torchvision
 
-from model import VQVAE
+from vqvae import VQVAE
 
 import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
-def init_weights(m):
-    if type(m) in [nn.Linear, nn.Conv2d]:
-        torch.nn.init.kaiming_normal_(m.weight)
-        m.bias.data.fill_(0.01)
-
 BATCH_SIZE = 64
-NB_EPOCHS = 200
+NB_EPOCHS = 50
 TRY_CUDA = True
 NB_EMBED = 512
+MODEL_SAVING = 5
 
 device = torch.device('cuda:0' if TRY_CUDA and torch.cuda.is_available() else 'cpu')
 print(f"> Device: {device} ({'CUDA is enabled' if TRY_CUDA and torch.cuda.is_available() else 'CUDA not available'}) \n")
@@ -59,7 +55,6 @@ for ei in range(NB_EPOCHS):
     tl_loss = 0.0
     for x, _ in tqdm.tqdm(train_loader):
         optim.zero_grad()
-        # model.zero_grad()
 
         x = x.to(device)
         out, l_loss = model(x)
@@ -73,36 +68,38 @@ for ei in range(NB_EPOCHS):
         loss.backward()
         optim.step()
 
-    # evaluate
-    model.eval()
-    test_loss = 0.0
-    er_loss = 0.0
-    el_loss = 0.0
-    for i, (x, _) in enumerate(test_loader):
-        optim.zero_grad()
-        # model.zero_grad()
+    with torch.no_grad():
+        # evaluate
+        model.eval()
+        test_loss = 0.0
+        er_loss = 0.0
+        el_loss = 0.0
+        for i, (x, _) in enumerate(test_loader):
+            optim.zero_grad()
 
-        x = x.to(device)
-        # out, l_loss = model(x)
-        qt, qb, l_loss, id_t, id_b = model.encode(x)
-        out = model.decode(qt, qb)
-        l_loss = l_loss.mean()
-        r_loss = crit(out, x)
+            x = x.to(device)
+            qt, qb, l_loss, id_t, id_b = model.encode(x)
+            out = model.decode(qt, qb)
+            l_loss = l_loss.mean()
+            r_loss = crit(out, x)
 
-        loss = r_loss + l_loss * 0.25
-        test_loss += loss.item()
-        er_loss += r_loss.item()
-        el_loss += l_loss.item()
+            loss = r_loss + l_loss * 0.25
+            test_loss += loss.item()
+            er_loss += r_loss.item()
+            el_loss += l_loss.item()
 
-        if i == 0:
-            img = torch.cat([x, out], dim=0)
-            torchvision.utils.save_image(img, f'imgs/vqvae-{ei}.png', normalize=True, range=(-1,1))
+            if i == 0:
+                img = torch.cat([x, out], dim=0)
+                torchvision.utils.save_image(img, f'imgs/vqvae-{ei}.png', normalize=True, range=(-1,1))
 
-            img = id_t.unsqueeze(1) / (NB_EMBED - 1.0)
-            torchvision.utils.save_image(img, f'imgs/vqvae-top-{ei}.png', normalize=True, range=(-1,1))
+                img = id_t.unsqueeze(1) / (NB_EMBED - 1.0)
+                torchvision.utils.save_image(img, f'imgs/vqvae-top-{ei}.png', normalize=True, range=(-1,1))
 
-            img = id_b.unsqueeze(1) / (NB_EMBED - 1.0)
-            torchvision.utils.save_image(img, f'imgs/vqvae-bottom-{ei}.png', normalize=True, range=(-1,1))
+                img = id_b.unsqueeze(1) / (NB_EMBED - 1.0)
+                torchvision.utils.save_image(img, f'imgs/vqvae-bottom-{ei}.png', normalize=True, range=(-1,1))
 
-    print(f"Training Loss: {training_loss / len(train_loader)} [r_loss: {tr_loss}, l_loss: {tl_loss}]")
-    print(f"Evaluation Loss: {test_loss / len(test_loader)} [r_loss: {er_loss}, l_loss: {el_loss}]\n")
+            if MODEL_SAVING > 0 and ei % MODEL_SAVING == 0:
+                torch.save(model.state_dict(), f"checkpoints/vqvae-{ei}.pt")
+
+    print(f"Training Loss: {training_loss / len(train_loader)} [r_loss: {tr_loss / len(train_loader)}, l_loss: {tl_loss / len(train_loader)}]")
+    print(f"Evaluation Loss: {test_loss / len(test_loader)} [r_loss: {er_loss / len(test_loader)}, l_loss: {el_loss / len(test_loader)}]\n")
