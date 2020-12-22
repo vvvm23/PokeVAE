@@ -133,29 +133,36 @@ def causal_mask(size):
     )
 
 class PixelBlock(nn.Module):
-    def __init__(self, in_channel, channel, kernel_size, nb_res_blocks, dropout=0.1, condition_dim=0):
+    def __init__(self, in_channel, channel, kernel_size, nb_res_blocks, dropout=0.1, condition_dim=0, attention=True):
         super().__init__()
+        self.attention = attention
         self.res_blks = nn.ModuleList([GatedResBlock(in_channel, channel, kernel_size, conv='causal', dropout=dropout, condition_dim=condition_dim) for _ in range(nb_res_blocks)])
-        self.k_blk = GatedResBlock(in_channel*2 + 2, in_channel, 1, dropout=dropout)
-        self.q_blk = GatedResBlock(in_channel + 2, in_channel, 1, dropout=dropout)
+        if attention:
+            self.k_blk = GatedResBlock(in_channel*2 + 2, in_channel, 1, dropout=dropout)
+            self.q_blk = GatedResBlock(in_channel + 2, in_channel, 1, dropout=dropout)
 
-        self.attn = CausalAttention(in_channel + 2, in_channel*2 + 2, in_channel // 2, dropout=dropout)
+            self.attn = CausalAttention(in_channel + 2, in_channel*2 + 2, in_channel // 2, dropout=dropout)
 
-        self.out_blk = GatedResBlock(in_channel, in_channel, 1, aux_channels=in_channel // 2, dropout=dropout)
+            self.out_blk = GatedResBlock(in_channel, in_channel, 1, aux_channels=in_channel // 2, dropout=dropout)
+        else:
+            self.out = WNConv2d(in_channel+2, in_channel, 1)
 
     def forward(self, x, bg, c=None):
         y = x
         for blk in self.res_blks:
             y = blk(y, c=c)
 
-        k = self.k_blk(torch.cat([x, y, bg], 1))
-        q = self.q_blk(torch.cat([y, bg], 1))
-        y = self.out_blk(y, a=self.attn(q, k))
+        if self.attention:
+            k = self.k_blk(torch.cat([x, y, bg], 1))
+            q = self.q_blk(torch.cat([y, bg], 1))
+            y = self.out_blk(y, a=self.attn(q, k))
+        else:
+            y = self.out(torch.cat([y, bg], dim=1))
 
         return y
 
 class PixelSnail(nn.Module):
-    def __init__(self, shape, nb_class, channel, kernel_size, nb_pixel_block, nb_res_block, res_channel, dropout=0.1, nb_cond_res_block=0, cond_res_channel=0, cond_res_kernel=3, nb_out_res_block=0, cond_interpolate=1):
+    def __init__(self, shape, nb_class, channel, kernel_size, nb_pixel_block, nb_res_block, res_channel, dropout=0.1, nb_cond_res_block=0, cond_res_channel=0, cond_res_kernel=3, nb_out_res_block=0, cond_interpolate=1, attention=True):
         super().__init__()
         height, width = shape
         self.nb_class = nb_class
@@ -174,7 +181,7 @@ class PixelSnail(nn.Module):
         coord_y = coord_y.view(1, 1, 1, width).expand(1, 1, height, width)
         self.register_buffer('bg', torch.cat([coord_x, coord_y], 1))
 
-        self.blks = nn.ModuleList([PixelBlock(channel, res_channel, kernel_size, nb_res_block, dropout=dropout, condition_dim=cond_res_channel) for _ in range(nb_pixel_block)])
+        self.blks = nn.ModuleList([PixelBlock(channel, res_channel, kernel_size, nb_res_block, dropout=dropout, condition_dim=cond_res_channel, attention=attention) for _ in range(nb_pixel_block)])
         
         if nb_cond_res_block > 0:
             cond_net = [WNConv2d(nb_class, cond_res_channel, cond_res_kernel, padding=cond_res_kernel // 2)]

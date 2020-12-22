@@ -10,7 +10,7 @@ import tqdm
 import sys
 
 BATCH_SIZE = 16
-NB_EPOCHS = 50
+NB_EPOCHS = 51
 TRY_CUDA = True
 NB_EMBED = 512
 MODEL_SAVING = 5
@@ -44,7 +44,8 @@ elif model_level == 'bottom':
         nb_cond_res_block=3,
         cond_res_channel=128,
         nb_out_res_block=1,
-        cond_interpolate=2
+        cond_interpolate=2,
+        attention=False
     ).to(device)
 else:
     print("! Unrecognised task! Exiting..")
