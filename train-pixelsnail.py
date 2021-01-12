@@ -52,6 +52,10 @@ else:
     print("! Unrecognised level! Exiting..")
     exit()
 
+if len(sys.argv) == 4:
+    print(f"> Loading from file.")
+    pixelsnail.load_state_dict(torch.load(sys.argv[3]))
+
 crit = torch.nn.CrossEntropyLoss()
 optim = torch.optim.Adam(pixelsnail.parameters(), lr=3e-3)
 
