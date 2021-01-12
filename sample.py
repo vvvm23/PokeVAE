@@ -29,7 +29,7 @@ vqvae = VQVAE(
 pixelsnail_top = PixelSnail(
     [32, 32],
     nb_class=NB_EMBED,
-    channel=128,
+    channel=256,
     kernel_size=5,
     nb_pixel_block=2,
     nb_res_block=4,
@@ -37,11 +37,12 @@ pixelsnail_top = PixelSnail(
     dropout=0.0,
     nb_out_res_block=1,
 ).to(device).eval()
+pixelsnail_top.load_state_dict(torch.load(pixelsnail_top_path))
 
 pixelsnail_bottom = PixelSnail(
     [64, 64],
     nb_class=NB_EMBED,
-    channel=128,
+    channel=256,
     kernel_size=5,
     nb_pixel_block=2,
     nb_res_block=4,
@@ -53,6 +54,7 @@ pixelsnail_bottom = PixelSnail(
     cond_interpolate=2,
     attention=False
 ).to(device).eval()
+pixelsnail_bottom.load_state_dict(torch.load(pixelsnail_bottom_path))
 
 with torch.no_grad():
     pb = tqdm.tqdm(total=LATENT_TOP[0]*LATENT_TOP[1])
