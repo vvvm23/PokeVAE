@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 
 from pixelsnail import PixelSnail
 
@@ -10,7 +11,7 @@ import tqdm
 import sys
 
 BATCH_SIZE = 16
-NB_EPOCHS = 51
+NB_EPOCHS = 101
 TRY_CUDA = True
 NB_EMBED = 512
 MODEL_SAVING = 5
@@ -23,7 +24,7 @@ if model_level == 'top':
     pixelsnail = PixelSnail(
         [32, 32],
         nb_class=NB_EMBED,
-        channel=128,
+        channel=256,
         kernel_size=5,
         nb_pixel_block=2,
         nb_res_block=4,
@@ -35,7 +36,7 @@ elif model_level == 'bottom':
     pixelsnail = PixelSnail(
         [64, 64],
         nb_class=NB_EMBED,
-        channel=128,
+        channel=256,
         kernel_size=5,
         nb_pixel_block=2,
         nb_res_block=4,
@@ -48,7 +49,7 @@ elif model_level == 'bottom':
         attention=False
     ).to(device)
 else:
-    print("! Unrecognised task! Exiting..")
+    print("! Unrecognised level! Exiting..")
     exit()
 
 crit = torch.nn.CrossEntropyLoss()
@@ -59,7 +60,7 @@ dataset = torch.utils.data.TensorDataset(*dataset)
 
 sample_indices = list(range(len(dataset)))
 np.random.shuffle(sample_indices)
-split_point = int(np.floor(0.1 * dataset.__len__()))
+split_point = int(np.floor(0.05 * dataset.__len__()))
 test_indices, train_indices = sample_indices[:split_point], sample_indices[split_point:]
 
 test_sampler = torch.utils.data.SubsetRandomSampler(test_indices)
@@ -92,7 +93,7 @@ for ei in range(NB_EPOCHS):
 
     with torch.no_grad():
         pixelsnail.eval()
-        for t, b in test_loader:
+        for i, (t, b) in enumerate(test_loader):
             optim.zero_grad()
             t = t.to(device).long()
             if model_level == 'top':
@@ -103,6 +104,14 @@ for ei in range(NB_EPOCHS):
                 out, _ = pixelsnail(b, c=t)
                 loss = crit(out, b)
             eval_loss += loss.item()
+
+            if i == 0:
+                if model_level == 'top':
+                    img = torch.cat([t / (NB_EMBED - 1), out.argmax(dim=1).long() / (NB_EMBED - 1)], dim=0)
+                    torchvision.utils.save_image(img.unsqueeze(1), f'imgs/pixelsnail-top-{ei}.png', normalize=True, range=(-1,1))
+                else:
+                    img = torch.cat([b / (NB_EMBED - 1), out.argmax(dim=1).long() / (NB_EMBED - 1)], dim=0)
+                    torchvision.utils.save_image(img.unsqueeze(1), f'imgs/pixelsnail-bottom-{ei}.png', normalize=True, range=(-1,1))
 
     if MODEL_SAVING > 0 and ei % MODEL_SAVING == 0:
         torch.save(pixelsnail.state_dict(), f"checkpoints/pixelsnail-{model_level}-{ei}.pt")
