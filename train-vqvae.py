@@ -15,6 +15,7 @@ NB_EPOCHS = 50
 TRY_CUDA = True
 NB_EMBED = 512
 MODEL_SAVING = 5
+BETA = 250
 
 device = torch.device('cuda:0' if TRY_CUDA and torch.cuda.is_available() else 'cpu')
 print(f"> Device: {device} ({'CUDA is enabled' if TRY_CUDA and torch.cuda.is_available() else 'CUDA not available'}) \n")
@@ -60,7 +61,7 @@ for ei in range(NB_EPOCHS):
         out, l_loss = model(x)
         l_loss = l_loss.mean()
         r_loss = crit(out, x)
-        loss = r_loss + l_loss * 0.25
+        loss = r_loss + l_loss * BETA
         training_loss += loss.item()
         tr_loss += r_loss.item()
         tl_loss += l_loss.item()
@@ -83,7 +84,7 @@ for ei in range(NB_EPOCHS):
             l_loss = l_loss.mean()
             r_loss = crit(out, x)
 
-            loss = r_loss + l_loss * 0.25
+            loss = r_loss + l_loss * BETA
             test_loss += loss.item()
             er_loss += r_loss.item()
             el_loss += l_loss.item()

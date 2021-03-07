@@ -7,12 +7,14 @@ from vqvae import VQVAE
 
 import tqdm
 import sys
+import math
 
 NB_EMBED = 512
 TRY_CUDA = True
 NB_SAMPLES = 4
 LATENT_TOP = (32, 32)
 LATENT_BOTTOM = (64, 64)
+TEMPERATURE = 1.0
 
 device = torch.device('cuda:0' if TRY_CUDA and torch.cuda.is_available() else 'cpu')
 print(f"> Device: {device} ({'CUDA is enabled' if TRY_CUDA and torch.cuda.is_available() else 'CUDA not available'}) \n")
@@ -25,6 +27,7 @@ vqvae = VQVAE(
     i_dim=3, h_dim=128, r_dim=64, nb_r_layers=2,
     nb_emd=NB_EMBED, emd_dim=64
 ).to(device).eval()
+vqvae.load_state_dict(torch.load(vqvae_path))
 
 pixelsnail_top = PixelSnail(
     [32, 32],
@@ -64,7 +67,7 @@ with torch.no_grad():
     for i in range(LATENT_TOP[0]):
         for j in range(LATENT_TOP[1]):
             pred, cache = pixelsnail_top(top_sample, cache={})
-            pred = F.softmax(pred[:, :, i, j], dim=1)
+            pred = F.softmax(pred[:, :, i, j] / TEMPERATURE, dim=1)
             top_sample[:, i, j] = torch.multinomial(pred, 1).squeeze()
             pb.update(1)
 
@@ -75,9 +78,9 @@ with torch.no_grad():
     for i in range(LATENT_BOTTOM[0]):
         for j in range(LATENT_BOTTOM[1]):
             pred, cache = pixelsnail_bottom(bottom_sample, c=top_sample, cache={})
-            pred = F.softmax(pred[:, :, i, j], dim=1)
+            pred = F.softmax(pred[:, :, i, j] / TEMPERATURE, dim=1)
             bottom_sample[:, i, j] = torch.multinomial(pred, 1).squeeze()
             pb.update(1)
 
     sample = vqvae.decode_code(top_sample, bottom_sample)
-    torchvision.utils.save_image(sample, f"imgs/sample.png")
+    torchvision.utils.save_image(sample, f"imgs/sample.png", nrow=int(math.sqrt(NB_SAMPLES)), normalize=True, range=(-1,1))
