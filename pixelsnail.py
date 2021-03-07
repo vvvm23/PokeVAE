@@ -51,9 +51,9 @@ class GatedResBlock(nn.Module):
             conv_builder = partial(CausalConv2d, padding='causal')
 
         self.conv1 = conv_builder(in_channel, channel, kernel_size)
-        # self.bn1 = nn.BatchNorm2d(channel)
+        self.bn1 = nn.BatchNorm2d(channel)
         self.conv2 = conv_builder(channel, in_channel*2, kernel_size)
-        # self.bn2 = nn.BatchNorm2d(in_channel*2)
+        self.bn2 = nn.BatchNorm2d(in_channel*2)
         self.drop1 = nn.Dropout(dropout)
 
         if aux_channels > 0:
@@ -64,8 +64,7 @@ class GatedResBlock(nn.Module):
         self.gate = nn.GLU(1) # 0 -> 1 === ReZero -> Residual
 
     def forward(self, x, a=None, c=None):
-        # y = self.bn1(self.conv1(F.elu(x)))
-        y = self.conv1(F.elu(x))
+        y = self.bn1(self.conv1(F.elu(x)))
 
         if a != None:
             y = y + self.aux_conv(F.elu(a))
@@ -73,7 +72,7 @@ class GatedResBlock(nn.Module):
 
         y = self.drop1(y)
         y = self.conv2(y)
-        # y = self.bn2(y)
+        y = self.bn2(y)
 
         if c != None:
             y = self.convc(c) + y
@@ -171,9 +170,9 @@ class PixelSnail(nn.Module):
         assert kernel_size % 2, "Kernel size must be odd"
 
         self.horz_conv = CausalConv2d(nb_class, channel, [kernel_size // 2, kernel_size], padding='down')
-        # self.horz_bn = nn.BatchNorm2d(channel)
+        self.horz_bn = nn.BatchNorm2d(channel)
         self.vert_conv = CausalConv2d(nb_class, channel, [(kernel_size+1) // 2, kernel_size // 2], padding='downright')
-        # self.vert_bn = nn.BatchNorm2d(channel)
+        self.vert_bn = nn.BatchNorm2d(channel)
 
         coord_x = (torch.arange(height).float() - height / 2) / height
         coord_x = coord_x.view(1, 1, height, 1).expand(1, 1, height, width)
@@ -206,8 +205,8 @@ class PixelSnail(nn.Module):
         batch, height, width = x.shape
         x = F.one_hot(x, self.nb_class).permute(0, 3, 1, 2).type_as(self.bg)
         
-        horz = self.shift_down(self.horz_conv(x))
-        vert = self.shift_right(self.vert_conv(x))
+        horz = self.shift_down(self.horz_bn(self.horz_conv(x)))
+        vert = self.shift_right(self.vert_bn(self.vert_conv(x)))
         y = horz + vert
 
         bg = self.bg[:, :, :height, :].expand(batch, 2, height, width)
